@@ -1,93 +1,80 @@
-from flask import Flask, jsonify, request
+from flask import Flask, request, jsonify
 import requests
 from bs4 import BeautifulSoup
 import urllib3
-import mechanicalsoup
-from lxml import html
 import scrapy
-from scrapy.crawler import CrawlerProcess
-from playwright.sync_api import sync_playwright
+from mechanicalsoup import StatefulBrowser
+from scrapy import Selector
 
 app = Flask(__name__)
 
-# Scrapy spider for scraping video page
-class AudioScraper(scrapy.Spider):
-    name = "audio_scraper"
-    
-    def __init__(self, url, *args, **kwargs):
-        super(AudioScraper, self).__init__(*args, **kwargs)
-        self.start_urls = [url]
-    
-    def parse(self, response):
-        audio_url = None
-        # Logic for extracting audio URLs, e.g., using BeautifulSoup or XPath
-        soup = BeautifulSoup(response.text, 'lxml')
-        for link in soup.find_all('a', href=True):
-            if link['href'].endswith(('m4a', 'mp3')):
-                audio_url = link['href']
-                break
-        return {'audio_url': audio_url}
+# Disable SSL warnings from urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Start Scrapy process to run spiders
-def run_scraper(video_url):
-    process = CrawlerProcess({
-        'LOG_LEVEL': 'ERROR'
-    })
-    scraper = AudioScraper(url=video_url)
-    process.crawl(scraper)
-    process.start()
-    return scraper.crawled_data
-
-# Playwright scraping
-def playwright_scrape(url):
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
-        page.goto(url)
-        content = page.content()
-        soup = BeautifulSoup(content, 'html.parser')
-        audio_url = None
-        for link in soup.find_all('a', href=True):
-            if link['href'].endswith(('m4a', 'mp3')):
-                audio_url = link['href']
-                break
-        browser.close()
-        return audio_url
-
-@app.route('/audio_url', methods=['GET'])
-def get_audio_url():
-    video_id = request.args.get('video_id')
-    if not video_id:
-        return jsonify({"error": "video_id is required"}), 400
-    
-    # Create the video URL
+# Function to fetch audio URL using BeautifulSoup and requests
+def fetch_audio_url(video_id):
     video_url = f"https://video.genyt.net/{video_id}"
-
-    # Scrape the video page for the audio URL
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3'
+    }
+    
     try:
-        # Try to fetch audio using Scrapy
-        scraped_audio_url = run_scraper(video_url)
-        if scraped_audio_url:
-            return jsonify({"audio_url": scraped_audio_url}), 200
+        # Request the video page
+        response = requests.get(video_url, headers=headers, verify=False)
+        response.raise_for_status()  # Raise error if request failed
+        html_content = response.content
 
-        # Fallback to Playwright scraping
-        audio_url = playwright_scrape(video_url)
-        if audio_url:
-            return jsonify({"audio_url": audio_url}), 200
+        # Parse the HTML with BeautifulSoup
+        soup = BeautifulSoup(html_content, 'lxml')
+        download_links = soup.find_all('a', attrs={'download': True})
         
-        # Fallback using requests and bs4
-        http = urllib3.PoolManager()
-        response = http.request('GET', video_url)
-        if response.status == 200:
-            soup = BeautifulSoup(response.data, 'html.parser')
-            for link in soup.find_all('a', href=True):
-                if link['href'].endswith(('m4a', 'mp3')):
-                    return jsonify({"audio_url": link['href']}), 200
+        # Filter and return a valid audio URL (e.g., mp3 or m4a)
+        for link in download_links:
+            if 'mp3' in link['download'] or 'm4a' in link['download']:
+                return link['href']
+        
+    except requests.RequestException as e:
+        print(f"Error fetching audio URL: {e}")
+        return None
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    return None
 
-    return jsonify({"error": "No valid audio URL found"}), 404
+
+# Function to fetch related songs using Scrapy and lxml
+def fetch_related_songs(video_id):
+    api_url = f"https://deep-dulcine-nitinbhujwa-16d0b380.koyeb.app/related_songs?video_id={video_id}"
+    try:
+        response = requests.get(api_url, verify=False)
+        response.raise_for_status()  # Check for HTTP errors
+        return response.json()
+    except requests.RequestException as e:
+        print(f"Error fetching related songs: {e}")
+        return None
+
+
+@app.route('/get_audio_url', methods=['GET'])
+def get_audio_url():
+    video_id = request.args.get('videoId')
+    if video_id:
+        audio_url = fetch_audio_url(video_id)
+        if audio_url:
+            return jsonify({'audioUrl': audio_url})
+        else:
+            return jsonify({'error': 'Failed to fetch audio URL'}), 500
+    return jsonify({'error': 'No videoId provided'}), 400
+
+
+@app.route('/get_related_songs', methods=['GET'])
+def get_related_songs():
+    video_id = request.args.get('videoId')
+    if video_id:
+        related_songs = fetch_related_songs(video_id)
+        if related_songs:
+            return jsonify({'relatedSongs': related_songs})
+        else:
+            return jsonify({'error': 'Failed to fetch related songs'}), 500
+    return jsonify({'error': 'No videoId provided'}), 400
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=8000, host='0.0.0.0')
