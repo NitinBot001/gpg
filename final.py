@@ -47,7 +47,7 @@ def extract_links():
         links = extract_m4a_links(file_name)
 
         # Delete the text file after extraction
-        os.remove(file_name)
+        #os.remove(file_name)
 
         if links:
             return jsonify({"m4a_links": links}), 200
