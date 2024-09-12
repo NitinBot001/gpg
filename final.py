@@ -42,12 +42,12 @@ def extract_links():
         if links:
             return jsonify({"m4a_links": links}), 200
         else:
-            return jsonify({"message": "No matching links found"}), 200
+            return jsonify({"message": "No matching links found"}), 404
 
     except requests.exceptions.RequestException as e:
         return jsonify({"error": str(e)}), 500
     except Exception as e:
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+        return jsonify({"error": f"An error occurred: {str(e)}"}), 504
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0',debug=True, port=8000)
