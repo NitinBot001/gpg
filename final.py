@@ -3,21 +3,16 @@ from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
 import re
-import os
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-def extract_m4a_links(file_path):
+def extract_m4a_links(html_content):
     # Regular expression pattern to match links starting with 'https://rr' and ending with '.m4a'
     pattern = r'https://rr.*?\.m4a'
 
-    # Open the file and read its contents
-    with open(file_path, 'r', encoding='utf-8') as file:
-        file_contents = file.read()
-
     # Find all matches using the regex pattern
-    links = re.findall(pattern, file_contents)
+    links = re.findall(pattern, html_content)
 
     return links
 
@@ -35,19 +30,14 @@ def extract_links():
         response = requests.get(url)
         response.raise_for_status()  # Raise an exception for HTTP errors
         
-        # Parse the HTML
+        # Parse the HTML using BeautifulSoup
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Save the HTML content to a file
-        file_name = f"ws_{yt_videoId}.txt"
-        with open(file_name, 'w', encoding='utf-8') as file:
-            file.write(soup.prettify())  # Save formatted HTML
-        
-        # Extract links from the saved HTML file
-        links = extract_m4a_links(file_name)
 
-        # Delete the text file after extraction
-        #os.remove(file_name)
+        # Extract the prettified HTML content as a string
+        html_content = soup.prettify()
+
+        # Extract links from the HTML content directly
+        links = extract_m4a_links(html_content)
 
         if links:
             return jsonify({"m4a_links": links}), 200
@@ -60,4 +50,4 @@ def extract_links():
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=6000)
+    app.run(host='0.0.0.0',debug=True, port=8000)
