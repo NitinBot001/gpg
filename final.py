@@ -1,10 +1,12 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import requests
 from bs4 import BeautifulSoup
 import re
 import os
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
 def extract_m4a_links(file_path):
     # Regular expression pattern to match links starting with 'https://rr' and ending with '.m4a'
@@ -58,4 +60,4 @@ def extract_links():
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=True, port=6000)
+    app.run(host='0.0.0.0', port=6000)
